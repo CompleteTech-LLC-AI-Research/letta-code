@@ -141,6 +141,7 @@ import {
   isDebugEnabled,
 } from "../utils/debug";
 import { getVersion } from "../version";
+import { isCavemanCommandInput } from "./commands/caveman";
 import {
   handleMcpAdd,
   type McpCommandContext,
@@ -10470,6 +10471,60 @@ export default function App({
                 type: "message",
                 role: "user",
                 content: buildTextParts(skillMessage),
+                otid: randomUUID(),
+              },
+            ]);
+          } catch (error) {
+            const errorDetails = formatErrorDetails(error, agentId);
+            cmd.fail(`Failed: ${errorDetails}`);
+          } finally {
+            setCommandRunning(false);
+          }
+
+          return { submitted: true };
+        }
+
+        // /caveman - switch cave_code response/thinking mode
+        if (isCavemanCommandInput(trimmed)) {
+          const modeInput = trimmed.slice("/caveman".length).trim();
+          const {
+            CAVEMAN_MODE_HINT,
+            buildCavemanCommandPrompt,
+            normalizeCavemanMode,
+          } = await import("./commands/caveman.js");
+          const mode = normalizeCavemanMode(modeInput);
+          const cmd = commandRunner.start(
+            msg,
+            mode
+              ? `Switching cave_code to ${mode} mode...`
+              : `Usage: /caveman ${CAVEMAN_MODE_HINT}`,
+          );
+
+          if (!mode) {
+            cmd.fail(`Usage: /caveman ${CAVEMAN_MODE_HINT}`);
+            return { submitted: true };
+          }
+
+          const approvalCheck = await checkPendingApprovalsForSlashCommand();
+          if (approvalCheck.blocked) {
+            cmd.fail(
+              "Pending approval(s). Resolve approvals before running /caveman.",
+            );
+            return { submitted: false };
+          }
+
+          setCommandRunning(true);
+
+          try {
+            const prompt = buildCavemanCommandPrompt(mode);
+            cmd.finish(`Switching cave_code to ${mode} mode...`, true);
+            await processConversation([
+              {
+                type: "message",
+                role: "user",
+                content: buildTextParts(
+                  `${SYSTEM_REMINDER_OPEN}\n${prompt}\n${SYSTEM_REMINDER_CLOSE}`,
+                ),
                 otid: randomUUID(),
               },
             ]);
