@@ -10483,6 +10483,60 @@ export default function App({
           return { submitted: true };
         }
 
+        // /caveman - switch CaveCode response/thinking mode
+        if (trimmed === "/caveman" || trimmed.startsWith("/caveman ")) {
+          const modeInput = trimmed.slice("/caveman".length).trim();
+          const {
+            CAVEMAN_MODE_HINT,
+            buildCavemanCommandPrompt,
+            normalizeCavemanMode,
+          } = await import("./commands/caveman.js");
+          const mode = normalizeCavemanMode(modeInput);
+          const cmd = commandRunner.start(
+            msg,
+            mode
+              ? `Switching CaveCode to ${mode} mode...`
+              : `Usage: /caveman ${CAVEMAN_MODE_HINT}`,
+          );
+
+          if (!mode) {
+            cmd.fail(`Usage: /caveman ${CAVEMAN_MODE_HINT}`);
+            return { submitted: true };
+          }
+
+          const approvalCheck = await checkPendingApprovalsForSlashCommand();
+          if (approvalCheck.blocked) {
+            cmd.fail(
+              "Pending approval(s). Resolve approvals before running /caveman.",
+            );
+            return { submitted: false };
+          }
+
+          setCommandRunning(true);
+
+          try {
+            const prompt = buildCavemanCommandPrompt(mode);
+            cmd.finish(`Switching CaveCode to ${mode} mode...`, true);
+            await processConversation([
+              {
+                type: "message",
+                role: "user",
+                content: buildTextParts(
+                  `${SYSTEM_REMINDER_OPEN}\n${prompt}\n${SYSTEM_REMINDER_CLOSE}`,
+                ),
+                otid: randomUUID(),
+              },
+            ]);
+          } catch (error) {
+            const errorDetails = formatErrorDetails(error, agentId);
+            cmd.fail(`Failed: ${errorDetails}`);
+          } finally {
+            setCommandRunning(false);
+          }
+
+          return { submitted: true };
+        }
+
         // Special handling for /remember command - remember something from conversation
         if (trimmed.startsWith("/remember")) {
           // Extract optional description after `/remember`

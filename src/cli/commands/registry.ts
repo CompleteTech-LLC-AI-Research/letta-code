@@ -1,6 +1,7 @@
 // src/cli/commands/registry.ts
 // Registry of available CLI commands
 
+import { CAVEMAN_MODE_HINT, normalizeCavemanMode } from "./caveman";
 import { handleSecretCommand } from "./secret";
 
 type CommandHandler = (args: string[]) => Promise<string> | string;
@@ -91,6 +92,19 @@ export const commands: Record<string, Command> = {
     handler: () => {
       // Handled specially in App.tsx to trigger skill-creation workflow
       return "Starting skill creation...";
+    },
+  },
+  "/caveman": {
+    desc: "Switch CaveCode caveman mode",
+    args: CAVEMAN_MODE_HINT,
+    order: 28.6,
+    handler: (args) => {
+      const mode = normalizeCavemanMode(args.join(" "));
+      if (!mode) {
+        return `Usage: /caveman ${CAVEMAN_MODE_HINT}`;
+      }
+      // Handled specially in App.tsx to send the mode-switch prompt.
+      return `Switching CaveCode to ${mode} mode...`;
     },
   },
   "/memory": {
