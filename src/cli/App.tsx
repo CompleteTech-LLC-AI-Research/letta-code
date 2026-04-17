@@ -142,6 +142,13 @@ import {
 } from "../utils/debug";
 import { getVersion } from "../version";
 import {
+  buildCavemanCommandPrompt,
+  CAVEMAN_MODE_HINT,
+  isCavemanCommandInput,
+  normalizeCavemanMode,
+  suppressPreparedClientTools,
+} from "./commands/caveman";
+import {
   handleMcpAdd,
   type McpCommandContext,
   setActiveCommandId as setActiveMcpCommandId,
@@ -4002,10 +4009,12 @@ export default function App({
       initialInput: Array<MessageCreate | ApprovalCreate>,
       options?: {
         allowReentry?: boolean;
+        suppressClientTools?: boolean;
         submissionGeneration?: number;
         transcriptStartLineIndex?: number | null;
       },
     ): Promise<void> => {
+      const suppressClientTools = options?.suppressClientTools ?? false;
       // Transient pre-stream retries can yield for seconds.
       // Pin the user's permission mode for the duration of the submission so
       // auto-approvals (YOLO / bypassPermissions) don't regress after a retry.
@@ -4350,13 +4359,18 @@ export default function App({
             const preparedToolContext = await prepareScopedToolExecutionContext(
               tempModelOverrideRef.current ?? undefined,
             );
+            const preparedToolContextForRequest = suppressClientTools
+              ? suppressPreparedClientTools(
+                  preparedToolContext.preparedToolContext,
+                )
+              : preparedToolContext.preparedToolContext;
             const nextStream = await sendMessageStream(
               conversationIdRef.current,
               currentInput,
               {
                 agentId: agentIdRef.current,
                 overrideModel: tempModelOverrideRef.current ?? undefined,
-                preparedToolContext: preparedToolContext.preparedToolContext,
+                preparedToolContext: preparedToolContextForRequest,
               },
             );
             stream = nextStream;
@@ -10473,6 +10487,63 @@ export default function App({
                 otid: randomUUID(),
               },
             ]);
+          } catch (error) {
+            const errorDetails = formatErrorDetails(error, agentId);
+            cmd.fail(`Failed: ${errorDetails}`);
+          } finally {
+            setCommandRunning(false);
+          }
+
+          return { submitted: true };
+        }
+
+        // /caveman - switch cave-code response/thinking mode
+        if (isCavemanCommandInput(trimmed)) {
+          const modeInput = trimmed.slice("/caveman".length).trim();
+          const mode = normalizeCavemanMode(modeInput);
+
+          if (!mode) {
+            addCommandResult(
+              buffersRef,
+              refreshDerived,
+              msg,
+              `Usage: /caveman ${CAVEMAN_MODE_HINT}`,
+              false,
+            );
+            return { submitted: true };
+          }
+
+          const cmd = commandRunner.start(
+            msg,
+            `Switching cave-code to ${mode} mode...`,
+          );
+
+          const approvalCheck = await checkPendingApprovalsForSlashCommand();
+          if (approvalCheck.blocked) {
+            cmd.fail(
+              "Pending approval(s). Resolve approvals before running /caveman.",
+            );
+            return { submitted: false };
+          }
+
+          setCommandRunning(true);
+
+          try {
+            const prompt = buildCavemanCommandPrompt(mode);
+            cmd.finish(`Switching cave-code to ${mode} mode...`, true);
+            await processConversation(
+              [
+                {
+                  type: "message",
+                  role: "user",
+                  content: buildTextParts(
+                    `${SYSTEM_REMINDER_OPEN}\n${prompt}\n${SYSTEM_REMINDER_CLOSE}`,
+                  ),
+                  otid: randomUUID(),
+                },
+              ],
+              { suppressClientTools: true },
+            );
           } catch (error) {
             const errorDetails = formatErrorDetails(error, agentId);
             cmd.fail(`Failed: ${errorDetails}`);
