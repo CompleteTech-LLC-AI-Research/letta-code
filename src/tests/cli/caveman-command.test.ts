@@ -87,7 +87,7 @@ describe("/caveman command", () => {
       }
       const example = exampleRule.replace("Example style: ", "");
       const pattern = new RegExp(
-        `-\\s+${escapeRegex(mode)}:\\s+"?${escapeRegex(example)}`,
+        `-\\s+${escapeRegex(mode)}:\\s+"${escapeRegex(example)}"`,
       );
       expect(skillSource).toMatch(pattern);
     }

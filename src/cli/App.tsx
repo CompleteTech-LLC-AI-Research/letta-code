@@ -1195,8 +1195,8 @@ export default function App({
     setConversationId(nextConversationId);
   }, []);
 
-  // Tracks the transcript start index for the current user turn across
-  // approval continuations (requires_approval -> approval result round-trip).
+  // Pending approval refs are live only between a requires_approval stop and
+  // its approval-result reentry, including queued interrupt continuations.
   const pendingTranscriptStartLineIndexRef = useRef<number | null>(null);
   const pendingApprovalSuppressClientToolsRef = useRef(false);
 
@@ -1410,19 +1410,33 @@ export default function App({
   const queuedApprovalMetadataRef = useRef<{
     conversationId: string;
     generation: number;
+    suppressClientTools: boolean;
   } | null>(null);
 
   const queueApprovalResults = useCallback(
     (
       results: ApprovalResult[] | null,
-      metadata?: { conversationId: string; generation: number },
+      metadata?: {
+        conversationId: string;
+        generation: number;
+        suppressClientTools?: boolean;
+      },
     ) => {
       setQueuedApprovalResults(results);
       if (results) {
-        queuedApprovalMetadataRef.current = metadata ?? {
+        const defaultMetadata = {
           conversationId: conversationIdRef.current,
           generation: conversationGenerationRef.current,
+          suppressClientTools: pendingApprovalSuppressClientToolsRef.current,
         };
+        queuedApprovalMetadataRef.current = metadata
+          ? {
+              ...metadata,
+              suppressClientTools:
+                metadata.suppressClientTools ??
+                defaultMetadata.suppressClientTools,
+            }
+          : defaultMetadata;
       } else {
         queuedApprovalMetadataRef.current = null;
       }
@@ -4172,12 +4186,12 @@ export default function App({
         }));
       };
       const allowReentry = options?.allowReentry ?? false;
-      if (!allowReentry) {
-        pendingApprovalSuppressClientToolsRef.current = false;
-      }
       const hasApprovalInput = initialInput.some(
         (item) => item.type === "approval",
       );
+      if (!allowReentry && !hasApprovalInput) {
+        pendingApprovalSuppressClientToolsRef.current = false;
+      }
       const hasExplicitTranscriptStart =
         options?.transcriptStartLineIndex !== undefined;
       if (options?.transcriptStartLineIndex !== undefined) {
@@ -11875,6 +11889,7 @@ ${SYSTEM_REMINDER_CLOSE}
       // Start the conversation loop. If we have queued approval results from an interrupted
       // client-side execution, send them first before the new user message.
       const initialInput: Array<MessageCreate | ApprovalCreate> = [];
+      let suppressClientToolsForSubmission = false;
 
       if (queuedApprovalResults) {
         const queuedMetadata = queuedApprovalMetadataRef.current;
@@ -11882,6 +11897,11 @@ ${SYSTEM_REMINDER_CLOSE}
           queuedMetadata &&
           queuedMetadata.conversationId === conversationIdRef.current &&
           queuedMetadata.generation === conversationGenerationRef.current;
+        const queuedSuppressClientTools =
+          isQueuedValid && queuedMetadata
+            ? queuedMetadata.suppressClientTools
+            : false;
+        suppressClientToolsForSubmission = queuedSuppressClientTools;
 
         if (isQueuedValid) {
           initialInput.push({
@@ -11897,6 +11917,8 @@ ${SYSTEM_REMINDER_CLOSE}
         }
         queueApprovalResults(null);
         interruptQueuedRef.current = false;
+        pendingApprovalSuppressClientToolsRef.current =
+          queuedSuppressClientTools;
       }
 
       initialInput.push({
@@ -11908,6 +11930,7 @@ ${SYSTEM_REMINDER_CLOSE}
 
       await processConversation(initialInput, {
         submissionGeneration,
+        suppressClientTools: suppressClientToolsForSubmission,
         transcriptStartLineIndex,
       });
 
