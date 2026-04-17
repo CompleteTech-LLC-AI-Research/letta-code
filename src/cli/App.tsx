@@ -1195,9 +1195,10 @@ export default function App({
     setConversationId(nextConversationId);
   }, []);
 
-  // Pending approval refs are live only between a requires_approval stop and
-  // its approval-result reentry, including queued interrupt continuations.
+  // Transcript start is set at user-turn start and kept through approval reentry.
   const pendingTranscriptStartLineIndexRef = useRef<number | null>(null);
+  // Tool suppression is live only between a requires_approval stop and its
+  // approval-result reentry, including queued interrupt continuations.
   const pendingApprovalSuppressClientToolsRef = useRef(false);
 
   // Track the most recent run ID from streaming (for statusline display)
@@ -12703,7 +12704,12 @@ ${SYSTEM_REMINDER_CLOSE}
       approve: false,
       reason: "User cancelled the approval",
     }));
-    queueApprovalResults(denialResults);
+    pendingApprovalSuppressClientToolsRef.current = false;
+    queueApprovalResults(denialResults, {
+      conversationId: conversationIdRef.current,
+      generation: conversationGenerationRef.current,
+      suppressClientTools: false,
+    });
 
     // Mark the pending approval tool calls as cancelled in the buffers
     markIncompleteToolsAsCancelled(buffersRef.current, true, "approval_cancel");
@@ -12715,7 +12721,6 @@ ${SYSTEM_REMINDER_CLOSE}
     setApprovalResults([]);
     setAutoHandledResults([]);
     setAutoDeniedApprovals([]);
-    pendingApprovalSuppressClientToolsRef.current = false;
   }, [pendingApprovals, refreshDerived, queueApprovalResults]);
 
   const handleModelSelect = useCallback(
