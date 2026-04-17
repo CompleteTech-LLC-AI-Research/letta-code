@@ -4013,6 +4013,12 @@ export default function App({
         transcriptStartLineIndex?: number | null;
       },
     ): Promise<void> => {
+      const clientToolsMode = options?.clientTools ?? "default";
+      const reentryOptions = {
+        allowReentry: true,
+        clientTools: clientToolsMode,
+      } as const;
+
       // Transient pre-stream retries can yield for seconds.
       // Pin the user's permission mode for the duration of the submission so
       // auto-approvals (YOLO / bypassPermissions) don't regress after a retry.
@@ -4149,7 +4155,7 @@ export default function App({
                 otid: randomUUID(),
               },
             ],
-            { allowReentry: true },
+            reentryOptions,
           );
         }, 0);
       };
@@ -4358,7 +4364,7 @@ export default function App({
               tempModelOverrideRef.current ?? undefined,
             );
             const preparedToolContextForRequest =
-              options?.clientTools === "none"
+              clientToolsMode === "none"
                 ? {
                     ...preparedToolContext.preparedToolContext,
                     clientTools: [],
@@ -5084,7 +5090,7 @@ export default function App({
                       otid: hookMessageOtid,
                     },
                   ],
-                  { allowReentry: true },
+                  reentryOptions,
                 );
               }, 0);
               return;
@@ -5592,7 +5598,7 @@ export default function App({
                         otid: randomUUID(),
                       },
                     ],
-                    { allowReentry: true },
+                    reentryOptions,
                   );
                   toolResultsInFlightRef.current = false;
                   return;
@@ -5638,7 +5644,7 @@ export default function App({
                       otid: randomUUID(),
                     },
                   ],
-                  { allowReentry: true },
+                  reentryOptions,
                 );
                 toolResultsInFlightRef.current = false;
                 return;
