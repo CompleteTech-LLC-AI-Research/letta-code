@@ -99,4 +99,25 @@ describe("approval recovery wiring", () => {
       "await recoverRestoredPendingApprovals(",
     );
   });
+
+  test("cancelled approval queue explicitly restores client tool advertising", () => {
+    const appPath = fileURLToPath(
+      new URL("../../cli/App.tsx", import.meta.url),
+    );
+    const source = readFileSync(appPath, "utf-8");
+
+    const start = source.indexOf("const handleCancelApprovals = useCallback");
+    const end = source.indexOf("const handleModelSelect = useCallback", start);
+
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+
+    const segment = source.slice(start, end);
+
+    expect(segment).toContain(
+      "pendingApprovalSuppressClientToolsRef.current = false;",
+    );
+    expect(segment).toContain("queueApprovalResults(denialResults, {");
+    expect(segment).toContain("suppressClientTools: false");
+  });
 });

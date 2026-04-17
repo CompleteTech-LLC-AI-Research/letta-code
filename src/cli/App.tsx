@@ -142,6 +142,13 @@ import {
 } from "../utils/debug";
 import { getVersion } from "../version";
 import {
+  buildCavemanCommandPrompt,
+  CAVEMAN_MODE_HINT,
+  isCavemanCommandInput,
+  normalizeCavemanMode,
+  suppressPreparedClientTools,
+} from "./commands/caveman";
+import {
   handleMcpAdd,
   type McpCommandContext,
   setActiveCommandId as setActiveMcpCommandId,
@@ -1188,9 +1195,11 @@ export default function App({
     setConversationId(nextConversationId);
   }, []);
 
-  // Tracks the transcript start index for the current user turn across
-  // approval continuations (requires_approval -> approval result round-trip).
+  // Transcript start is set at user-turn start and kept through approval reentry.
   const pendingTranscriptStartLineIndexRef = useRef<number | null>(null);
+  // Tool suppression is live only between a requires_approval stop and its
+  // approval-result reentry, including queued interrupt continuations.
+  const pendingApprovalSuppressClientToolsRef = useRef(false);
 
   // Track the most recent run ID from streaming (for statusline display)
   const lastRunIdRef = useRef<string | null>(null);
@@ -1402,19 +1411,33 @@ export default function App({
   const queuedApprovalMetadataRef = useRef<{
     conversationId: string;
     generation: number;
+    suppressClientTools: boolean;
   } | null>(null);
 
   const queueApprovalResults = useCallback(
     (
       results: ApprovalResult[] | null,
-      metadata?: { conversationId: string; generation: number },
+      metadata?: {
+        conversationId: string;
+        generation: number;
+        suppressClientTools?: boolean;
+      },
     ) => {
       setQueuedApprovalResults(results);
       if (results) {
-        queuedApprovalMetadataRef.current = metadata ?? {
+        const defaultMetadata = {
           conversationId: conversationIdRef.current,
           generation: conversationGenerationRef.current,
+          suppressClientTools: pendingApprovalSuppressClientToolsRef.current,
         };
+        queuedApprovalMetadataRef.current = metadata
+          ? {
+              ...metadata,
+              suppressClientTools:
+                metadata.suppressClientTools ??
+                defaultMetadata.suppressClientTools,
+            }
+          : defaultMetadata;
       } else {
         queuedApprovalMetadataRef.current = null;
       }
@@ -4002,10 +4025,17 @@ export default function App({
       initialInput: Array<MessageCreate | ApprovalCreate>,
       options?: {
         allowReentry?: boolean;
+        suppressClientTools?: boolean;
         submissionGeneration?: number;
         transcriptStartLineIndex?: number | null;
       },
     ): Promise<void> => {
+      const suppressClientTools = options?.suppressClientTools ?? false;
+      const reentryOptions = {
+        allowReentry: true,
+        suppressClientTools,
+      } as const;
+
       // Transient pre-stream retries can yield for seconds.
       // Pin the user's permission mode for the duration of the submission so
       // auto-approvals (YOLO / bypassPermissions) don't regress after a retry.
@@ -4142,7 +4172,7 @@ export default function App({
                 otid: randomUUID(),
               },
             ],
-            { allowReentry: true },
+            reentryOptions,
           );
         }, 0);
       };
@@ -4160,6 +4190,9 @@ export default function App({
       const hasApprovalInput = initialInput.some(
         (item) => item.type === "approval",
       );
+      if (!allowReentry && !hasApprovalInput) {
+        pendingApprovalSuppressClientToolsRef.current = false;
+      }
       const hasExplicitTranscriptStart =
         options?.transcriptStartLineIndex !== undefined;
       if (options?.transcriptStartLineIndex !== undefined) {
@@ -4350,13 +4383,18 @@ export default function App({
             const preparedToolContext = await prepareScopedToolExecutionContext(
               tempModelOverrideRef.current ?? undefined,
             );
+            const preparedToolContextForRequest = suppressClientTools
+              ? suppressPreparedClientTools(
+                  preparedToolContext.preparedToolContext,
+                )
+              : preparedToolContext.preparedToolContext;
             const nextStream = await sendMessageStream(
               conversationIdRef.current,
               currentInput,
               {
                 agentId: agentIdRef.current,
                 overrideModel: tempModelOverrideRef.current ?? undefined,
-                preparedToolContext: preparedToolContext.preparedToolContext,
+                preparedToolContext: preparedToolContextForRequest,
               },
             );
             stream = nextStream;
@@ -5070,7 +5108,7 @@ export default function App({
                       otid: hookMessageOtid,
                     },
                   ],
-                  { allowReentry: true },
+                  reentryOptions,
                 );
               }, 0);
               return;
@@ -5224,6 +5262,7 @@ export default function App({
           if (stopReasonToHandle === "requires_approval") {
             clearApprovalToolContext();
             preserveTranscriptStartForApproval = true;
+            pendingApprovalSuppressClientToolsRef.current = suppressClientTools;
             approvalToolContextIdRef.current = turnToolContextId;
             // Clear stale state immediately to prevent ID mismatch bugs
             setAutoHandledResults([]);
@@ -5578,7 +5617,7 @@ export default function App({
                         otid: randomUUID(),
                       },
                     ],
-                    { allowReentry: true },
+                    reentryOptions,
                   );
                   toolResultsInFlightRef.current = false;
                   return;
@@ -5624,7 +5663,7 @@ export default function App({
                       otid: randomUUID(),
                     },
                   ],
-                  { allowReentry: true },
+                  reentryOptions,
                 );
                 toolResultsInFlightRef.current = false;
                 return;
@@ -6327,6 +6366,7 @@ export default function App({
       } finally {
         if (!preserveTranscriptStartForApproval) {
           pendingTranscriptStartLineIndexRef.current = null;
+          pendingApprovalSuppressClientToolsRef.current = false;
         }
 
         // Check if this conversation was superseded by an ESC interrupt
@@ -10483,6 +10523,63 @@ export default function App({
           return { submitted: true };
         }
 
+        // /caveman - switch cave-code response/thinking mode
+        if (isCavemanCommandInput(trimmed)) {
+          const modeInput = trimmed.slice("/caveman".length).trim();
+          const mode = normalizeCavemanMode(modeInput);
+
+          if (!mode) {
+            addCommandResult(
+              buffersRef,
+              refreshDerived,
+              msg,
+              `Usage: /caveman ${CAVEMAN_MODE_HINT}`,
+              false,
+            );
+            return { submitted: true };
+          }
+
+          const cmd = commandRunner.start(
+            msg,
+            `Switching cave-code to ${mode} mode...`,
+          );
+
+          const approvalCheck = await checkPendingApprovalsForSlashCommand();
+          if (approvalCheck.blocked) {
+            cmd.fail(
+              "Pending approval(s). Resolve approvals before running /caveman.",
+            );
+            return { submitted: false };
+          }
+
+          setCommandRunning(true);
+
+          try {
+            const prompt = buildCavemanCommandPrompt(mode);
+            cmd.finish(`Switching cave-code to ${mode} mode...`, true);
+            await processConversation(
+              [
+                {
+                  type: "message",
+                  role: "user",
+                  content: buildTextParts(
+                    `${SYSTEM_REMINDER_OPEN}\n${prompt}\n${SYSTEM_REMINDER_CLOSE}`,
+                  ),
+                  otid: randomUUID(),
+                },
+              ],
+              { suppressClientTools: true },
+            );
+          } catch (error) {
+            const errorDetails = formatErrorDetails(error, agentId);
+            cmd.fail(`Failed: ${errorDetails}`);
+          } finally {
+            setCommandRunning(false);
+          }
+
+          return { submitted: true };
+        }
+
         // Special handling for /remember command - remember something from conversation
         if (trimmed.startsWith("/remember")) {
           // Extract optional description after `/remember`
@@ -11793,6 +11890,7 @@ ${SYSTEM_REMINDER_CLOSE}
       // Start the conversation loop. If we have queued approval results from an interrupted
       // client-side execution, send them first before the new user message.
       const initialInput: Array<MessageCreate | ApprovalCreate> = [];
+      let suppressClientToolsForSubmission = false;
 
       if (queuedApprovalResults) {
         const queuedMetadata = queuedApprovalMetadataRef.current;
@@ -11800,6 +11898,11 @@ ${SYSTEM_REMINDER_CLOSE}
           queuedMetadata &&
           queuedMetadata.conversationId === conversationIdRef.current &&
           queuedMetadata.generation === conversationGenerationRef.current;
+        const queuedSuppressClientTools =
+          isQueuedValid && queuedMetadata
+            ? queuedMetadata.suppressClientTools
+            : false;
+        suppressClientToolsForSubmission = queuedSuppressClientTools;
 
         if (isQueuedValid) {
           initialInput.push({
@@ -11815,6 +11918,8 @@ ${SYSTEM_REMINDER_CLOSE}
         }
         queueApprovalResults(null);
         interruptQueuedRef.current = false;
+        pendingApprovalSuppressClientToolsRef.current =
+          queuedSuppressClientTools;
       }
 
       initialInput.push({
@@ -11826,6 +11931,7 @@ ${SYSTEM_REMINDER_CLOSE}
 
       await processConversation(initialInput, {
         submissionGeneration,
+        suppressClientTools: suppressClientToolsForSubmission,
         transcriptStartLineIndex,
       });
 
@@ -12207,7 +12313,10 @@ ${SYSTEM_REMINDER_CLOSE}
             buffersRef.current,
           );
           toolResultsInFlightRef.current = true;
-          await processConversation(input, { allowReentry: true });
+          await processConversation(input, {
+            allowReentry: true,
+            suppressClientTools: pendingApprovalSuppressClientToolsRef.current,
+          });
           toolResultsInFlightRef.current = false;
 
           // Clear any stale queued results from previous interrupts.
@@ -12488,13 +12597,20 @@ ${SYSTEM_REMINDER_CLOSE}
             refreshDerived();
 
             // Continue conversation with all results
-            await processConversation([
+            await processConversation(
+              [
+                {
+                  type: "approval",
+                  approvals: allResults as ApprovalResult[],
+                  otid: randomUUID(),
+                },
+              ],
               {
-                type: "approval",
-                approvals: allResults as ApprovalResult[],
-                otid: randomUUID(),
+                allowReentry: true,
+                suppressClientTools:
+                  pendingApprovalSuppressClientToolsRef.current,
               },
-            ]);
+            );
           } finally {
             setIsExecutingTool(false);
           }
@@ -12588,7 +12704,12 @@ ${SYSTEM_REMINDER_CLOSE}
       approve: false,
       reason: "User cancelled the approval",
     }));
-    queueApprovalResults(denialResults);
+    pendingApprovalSuppressClientToolsRef.current = false;
+    queueApprovalResults(denialResults, {
+      conversationId: conversationIdRef.current,
+      generation: conversationGenerationRef.current,
+      suppressClientTools: false,
+    });
 
     // Mark the pending approval tool calls as cancelled in the buffers
     markIncompleteToolsAsCancelled(buffersRef.current, true, "approval_cancel");

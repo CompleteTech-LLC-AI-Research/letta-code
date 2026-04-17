@@ -5,7 +5,7 @@
  * Bundles TypeScript source into a single JavaScript file
  */
 
-import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -75,7 +75,7 @@ ${content}`;
 await Bun.write(outputPath, withShebang);
 
 // Make executable
-await Bun.$`chmod +x letta.js`;
+chmodSync(outputPath, 0o755);
 
 // Copy bundled skills to skills/ directory for shipping
 const bundledSkillsSrc = join(__dirname, "src/skills/builtin");

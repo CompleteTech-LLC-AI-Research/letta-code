@@ -21,7 +21,7 @@ const PRIMARY_HUMAN_RELATIVE_PATH = "system/human.md";
 const LEGACY_HUMAN_RELATIVE_PATH = "memory/system/human.md";
 
 export interface PersonalityOption {
-  id: "kawaii" | "codex" | "claude" | "linus" | "memo";
+  id: "kawaii" | "caveman" | "codex" | "claude" | "linus" | "memo";
   label: string;
   description: string;
   /** Model ID from models.json to use when no explicit model is provided. */
@@ -43,6 +43,12 @@ export const PERSONALITY_OPTIONS: PersonalityOption[] = [
     id: "kawaii",
     label: "Letta-Chan",
     description: "sugoi~ (◕‿◕)✨",
+    defaultModel: "auto-chat",
+  },
+  {
+    id: "caveman",
+    label: "cave-code",
+    description: "Smart cave coder, terse and exact",
     defaultModel: "auto-chat",
   },
   {
@@ -70,9 +76,34 @@ export type DefaultCreateAgentPersonalityId =
 
 const PERSONALITY_ALIASES: Record<string, PersonalityId> = {
   "letta-code": "memo",
+  "cave-code": "caveman",
   lettacode: "memo",
   memo: "memo",
 };
+
+const PERSONA_TEMPLATE_BY_ID: Record<PersonalityId, string> = {
+  memo: "persona_memo.mdx",
+  kawaii: "persona_kawaii.mdx",
+  caveman: "persona_caveman.mdx",
+  linus: "persona_linus.mdx",
+  codex: "persona.mdx",
+  claude: "persona.mdx",
+};
+
+const HUMAN_TEMPLATE_BY_ID: Record<PersonalityId, string> = {
+  memo: "human_memo.mdx",
+  kawaii: "human_kawaii.mdx",
+  linus: "human_linus.mdx",
+  caveman: "human.mdx",
+  codex: "human.mdx",
+  claude: "human.mdx",
+};
+
+const PERSONA_CONTENT_OVERRIDES: Partial<Record<PersonalityId, () => string>> =
+  {
+    codex: () => ensureTrailingNewline(getSystemPromptById("source-codex")),
+    claude: () => ensureTrailingNewline(getSystemPromptById("source-claude")),
+  };
 
 export interface ApplyPersonalityToMemoryParams {
   agentId: string;
@@ -261,23 +292,10 @@ export function resolvePersonalityId(input: string): PersonalityId | null {
 }
 
 export function getPersonalityContent(personalityId: PersonalityId): string {
-  if (personalityId === "memo") {
-    return getPromptBody("persona_memo.mdx");
-  }
-
-  if (personalityId === "kawaii") {
-    return getPromptBody("persona_kawaii.mdx");
-  }
-
-  if (personalityId === "codex") {
-    return ensureTrailingNewline(getSystemPromptById("source-codex"));
-  }
-
-  if (personalityId === "linus") {
-    return getPromptBody("persona_linus.mdx");
-  }
-
-  return ensureTrailingNewline(getSystemPromptById("source-claude"));
+  return (
+    PERSONA_CONTENT_OVERRIDES[personalityId]?.() ??
+    getPromptBody(PERSONA_TEMPLATE_BY_ID[personalityId])
+  );
 }
 
 export function getDefaultHumanContent(): string {
@@ -287,19 +305,7 @@ export function getDefaultHumanContent(): string {
 export function getPersonalityHumanContent(
   personalityId: PersonalityId,
 ): string {
-  if (personalityId === "memo") {
-    return getPromptBody("human_memo.mdx");
-  }
-
-  if (personalityId === "linus") {
-    return getPromptBody("human_linus.mdx");
-  }
-
-  if (personalityId === "kawaii") {
-    return getPromptBody("human_kawaii.mdx");
-  }
-
-  return getDefaultHumanContent();
+  return getPromptBody(HUMAN_TEMPLATE_BY_ID[personalityId]);
 }
 
 export function getPersonalityBlockValues(personalityId: PersonalityId): {
@@ -317,22 +323,8 @@ export function getPersonalityBlockDefinitions(personalityId: PersonalityId): {
   persona: PersonalityBlockDefinition;
   human: PersonalityBlockDefinition;
 } {
-  const personaTemplatePromptAssetName =
-    personalityId === "memo"
-      ? "persona_memo.mdx"
-      : personalityId === "kawaii"
-        ? "persona_kawaii.mdx"
-        : personalityId === "linus"
-          ? "persona_linus.mdx"
-          : "persona.mdx";
-  const humanTemplatePromptAssetName =
-    personalityId === "memo"
-      ? "human_memo.mdx"
-      : personalityId === "kawaii"
-        ? "human_kawaii.mdx"
-        : personalityId === "linus"
-          ? "human_linus.mdx"
-          : "human.mdx";
+  const personaTemplatePromptAssetName = PERSONA_TEMPLATE_BY_ID[personalityId];
+  const humanTemplatePromptAssetName = HUMAN_TEMPLATE_BY_ID[personalityId];
 
   return {
     persona: {

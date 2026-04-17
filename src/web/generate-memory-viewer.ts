@@ -38,6 +38,13 @@ const PER_DIFF_CAP = 100_000; // 100KB per diff
 const TOTAL_PAYLOAD_CAP = 5_000_000; // 5MB total
 const RECORD_SEP = "\x1e";
 
+type ConversationListItem = {
+  id: string;
+  created_at: string;
+  last_run_completion?: string | null;
+  label?: string | null;
+};
+
 export interface GenerateResult {
   filePath: string;
   opened: boolean;
@@ -433,8 +440,8 @@ async function collectMemoryData(
       order: "desc",
       order_by: "last_run_completion",
     });
-    const convItems = convPage;
-    conversations = convItems.map((c: any) => ({
+    const convItems = convPage as ConversationListItem[];
+    conversations = convItems.map((c) => ({
       id: c.id,
       created_at: c.created_at,
       last_run_completion: c.last_run_completion ?? null,
