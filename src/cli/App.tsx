@@ -146,6 +146,7 @@ import {
   CAVEMAN_MODE_HINT,
   isCavemanCommandInput,
   normalizeCavemanMode,
+  suppressPreparedClientTools,
 } from "./commands/caveman";
 import {
   handleMcpAdd,
@@ -4368,10 +4369,9 @@ export default function App({
               tempModelOverrideRef.current ?? undefined,
             );
             const preparedToolContextForRequest = suppressClientTools
-              ? {
-                  ...preparedToolContext.preparedToolContext,
-                  clientTools: [],
-                }
+              ? suppressPreparedClientTools(
+                  preparedToolContext.preparedToolContext,
+                )
               : preparedToolContext.preparedToolContext;
             const nextStream = await sendMessageStream(
               conversationIdRef.current,

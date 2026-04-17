@@ -1,3 +1,5 @@
+import type { PreparedToolExecutionContext } from "../../tools/manager";
+
 export const CAVEMAN_MODE_HINT =
   "[lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra]";
 
@@ -77,4 +79,13 @@ export function buildCavemanCommandPrompt(mode: CavemanMode): string {
     "Technical terms stay exact. Code and quoted errors stay unchanged.",
     "If safety-critical, destructive, or easy to misunderstand, switch to clear normal language for that part, then return to cave-code.",
   ].join("\n");
+}
+
+export function suppressPreparedClientTools(
+  preparedToolContext: PreparedToolExecutionContext,
+): PreparedToolExecutionContext {
+  return {
+    ...preparedToolContext,
+    clientTools: [],
+  };
 }

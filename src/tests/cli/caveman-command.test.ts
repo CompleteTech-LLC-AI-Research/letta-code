@@ -6,8 +6,10 @@ import {
   CAVEMAN_MODE_RULES,
   isCavemanCommandInput,
   normalizeCavemanMode,
+  suppressPreparedClientTools,
 } from "../../cli/commands/caveman";
 import { commands, executeCommand } from "../../cli/commands/registry";
+import type { PreparedToolExecutionContext } from "../../tools/manager";
 
 describe("/caveman command", () => {
   test("matches slash-first caveman commands with trailing whitespace separators", () => {
@@ -93,7 +95,7 @@ describe("/caveman command", () => {
     });
 
     await expect(executeCommand("/caveman ultra")).resolves.toEqual({
-      success: false,
+      success: true,
       output:
         "/caveman ultra must be used inside the interactive CLI; mode was not applied.",
     });
@@ -104,12 +106,23 @@ describe("/caveman command", () => {
     });
   });
 
-  test("/caveman suppresses client tools through approval continuations", () => {
-    const appPath = fileURLToPath(
-      new URL("../../cli/App.tsx", import.meta.url),
-    );
-    const appSource = readFileSync(appPath, "utf-8");
+  test("suppresses advertised client tools while preserving execution context", () => {
+    const preparedToolContext: PreparedToolExecutionContext = {
+      contextId: "ctx-1",
+      loadedToolNames: ["Bash"],
+      clientTools: [
+        {
+          name: "Bash",
+          description: "Run a shell command",
+          parameters: { type: "object" },
+        },
+      ],
+    };
 
-    expect(appSource).toContain("pendingApprovalSuppressClientToolsRef");
+    expect(suppressPreparedClientTools(preparedToolContext)).toEqual({
+      contextId: "ctx-1",
+      loadedToolNames: ["Bash"],
+      clientTools: [],
+    });
   });
 });

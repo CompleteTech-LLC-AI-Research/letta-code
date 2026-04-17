@@ -105,12 +105,6 @@ const PERSONA_CONTENT_OVERRIDES: Partial<Record<PersonalityId, () => string>> =
     claude: () => ensureTrailingNewline(getSystemPromptById("source-claude")),
   };
 
-const HUMAN_CONTENT_OVERRIDES: Partial<Record<PersonalityId, () => string>> = {
-  caveman: () => getDefaultHumanContent(),
-  codex: () => getDefaultHumanContent(),
-  claude: () => getDefaultHumanContent(),
-};
-
 export interface ApplyPersonalityToMemoryParams {
   agentId: string;
   personalityId: PersonalityId;
@@ -311,10 +305,7 @@ export function getDefaultHumanContent(): string {
 export function getPersonalityHumanContent(
   personalityId: PersonalityId,
 ): string {
-  return (
-    HUMAN_CONTENT_OVERRIDES[personalityId]?.() ??
-    getPromptBody(HUMAN_TEMPLATE_BY_ID[personalityId])
-  );
+  return getPromptBody(HUMAN_TEMPLATE_BY_ID[personalityId]);
 }
 
 export function getPersonalityBlockValues(personalityId: PersonalityId): {

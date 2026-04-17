@@ -110,7 +110,7 @@ export const commands: Record<string, Command> = {
         };
       }
       return {
-        success: false,
+        success: true,
         output: `/caveman ${mode} must be used inside the interactive CLI; mode was not applied.`,
       };
     },
