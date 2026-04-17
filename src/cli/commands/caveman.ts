@@ -69,7 +69,8 @@ export function buildCavemanCommandPrompt(mode: CavemanMode): string {
   return [
     `Switch to cave-code ${mode} mode.`,
     ...CAVEMAN_MODE_RULES[mode],
-    "Apply this mode for this conversation only. Do not call memory tools or filesystem tools for this mode switch.",
+    "Apply this mode for this conversation only. Do not call any tools for this mode switch.",
+    "Specifically avoid server-side tools such as `memory`, `core_memory_append`, `core_memory_replace`, `archival_memory_insert`, `archival_memory_search`, `web_search`, and `fetch_webpage`.",
     "Reasoning fire stays on: every reasoning_message must be non-empty cave-grunt, never analyst prose.",
     'No analyst layer: no "The user is asking", no "Let me think", no "I should", no prompt/tool bookkeeping.',
     "Hidden reasoning, plans, and visible replies all follow the selected cave-code mode.",

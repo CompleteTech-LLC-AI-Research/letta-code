@@ -4,7 +4,10 @@
 import { CAVEMAN_MODE_HINT, normalizeCavemanMode } from "./caveman";
 import { handleSecretCommand } from "./secret";
 
-type CommandHandler = (args: string[]) => Promise<string> | string;
+type CommandResult = { success: boolean; output: string };
+type CommandHandler =
+  | ((args: string[]) => Promise<string | CommandResult>)
+  | ((args: string[]) => string | CommandResult);
 
 interface Command {
   desc: string;
@@ -101,9 +104,15 @@ export const commands: Record<string, Command> = {
     handler: (args) => {
       const mode = normalizeCavemanMode(args.join(" "));
       if (!mode) {
-        return `Usage: /caveman ${CAVEMAN_MODE_HINT}`;
+        return {
+          success: false,
+          output: `Usage: /caveman ${CAVEMAN_MODE_HINT}`,
+        };
       }
-      return `Interactive-only command: /caveman ${mode} is handled by the CLI message loop.`;
+      return {
+        success: false,
+        output: `/caveman ${mode} must be used inside the interactive CLI; mode was not applied.`,
+      };
     },
   },
   "/memory": {
@@ -633,8 +642,11 @@ export async function executeCommand(
   }
 
   try {
-    const output = await handler.handler(args);
-    return { success: true, output };
+    const result = await handler.handler(args);
+    if (typeof result === "string") {
+      return { success: true, output: result };
+    }
+    return result;
   } catch (error) {
     return {
       success: false,

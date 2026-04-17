@@ -42,7 +42,11 @@ describe("/caveman command", () => {
     expect(prompt).toContain("abbreviate common technical nouns");
     expect(prompt).toContain("Inline obj prop → new ref → re-render");
     expect(prompt).toContain("Apply this mode for this conversation only");
-    expect(prompt).toContain("Do not call memory tools");
+    expect(prompt).toContain("Do not call any tools");
+    expect(prompt).toContain("`memory`");
+    expect(prompt).toContain("`core_memory_append`");
+    expect(prompt).toContain("`archival_memory_insert`");
+    expect(prompt).toContain("`web_search`");
     expect(prompt).toContain("every reasoning_message must be non-empty");
     expect(prompt).toContain("never analyst prose");
   });
@@ -68,13 +72,13 @@ describe("/caveman command", () => {
       desc: "Switch cave-code mode",
     });
 
-    await expect(executeCommand("/caveman ultra")).resolves.toMatchObject({
-      success: true,
+    await expect(executeCommand("/caveman ultra")).resolves.toEqual({
+      success: false,
       output:
-        "Interactive-only command: /caveman ultra is handled by the CLI message loop.",
+        "/caveman ultra must be used inside the interactive CLI; mode was not applied.",
     });
-    await expect(executeCommand("/caveman nonsense")).resolves.toMatchObject({
-      success: true,
+    await expect(executeCommand("/caveman nonsense")).resolves.toEqual({
+      success: false,
       output:
         "Usage: /caveman [lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra]",
     });
