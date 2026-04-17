@@ -99,19 +99,13 @@ const HUMAN_TEMPLATE_BY_ID: Record<PersonalityId, string> = {
   claude: "human.mdx",
 };
 
-const PERSONA_CONTENT_BY_ID: Record<PersonalityId, () => string> = {
-  memo: () => getPromptBody(PERSONA_TEMPLATE_BY_ID.memo),
-  kawaii: () => getPromptBody(PERSONA_TEMPLATE_BY_ID.kawaii),
-  caveman: () => getPromptBody(PERSONA_TEMPLATE_BY_ID.caveman),
-  linus: () => getPromptBody(PERSONA_TEMPLATE_BY_ID.linus),
-  codex: () => ensureTrailingNewline(getSystemPromptById("source-codex")),
-  claude: () => ensureTrailingNewline(getSystemPromptById("source-claude")),
-};
+const PERSONA_CONTENT_OVERRIDES: Partial<Record<PersonalityId, () => string>> =
+  {
+    codex: () => ensureTrailingNewline(getSystemPromptById("source-codex")),
+    claude: () => ensureTrailingNewline(getSystemPromptById("source-claude")),
+  };
 
-const HUMAN_CONTENT_BY_ID: Record<PersonalityId, () => string> = {
-  memo: () => getPromptBody(HUMAN_TEMPLATE_BY_ID.memo),
-  kawaii: () => getPromptBody(HUMAN_TEMPLATE_BY_ID.kawaii),
-  linus: () => getPromptBody(HUMAN_TEMPLATE_BY_ID.linus),
+const HUMAN_CONTENT_OVERRIDES: Partial<Record<PersonalityId, () => string>> = {
   caveman: () => getDefaultHumanContent(),
   codex: () => getDefaultHumanContent(),
   claude: () => getDefaultHumanContent(),
@@ -304,7 +298,10 @@ export function resolvePersonalityId(input: string): PersonalityId | null {
 }
 
 export function getPersonalityContent(personalityId: PersonalityId): string {
-  return PERSONA_CONTENT_BY_ID[personalityId]();
+  return (
+    PERSONA_CONTENT_OVERRIDES[personalityId]?.() ??
+    getPromptBody(PERSONA_TEMPLATE_BY_ID[personalityId])
+  );
 }
 
 export function getDefaultHumanContent(): string {
@@ -314,7 +311,10 @@ export function getDefaultHumanContent(): string {
 export function getPersonalityHumanContent(
   personalityId: PersonalityId,
 ): string {
-  return HUMAN_CONTENT_BY_ID[personalityId]();
+  return (
+    HUMAN_CONTENT_OVERRIDES[personalityId]?.() ??
+    getPromptBody(HUMAN_TEMPLATE_BY_ID[personalityId])
+  );
 }
 
 export function getPersonalityBlockValues(personalityId: PersonalityId): {

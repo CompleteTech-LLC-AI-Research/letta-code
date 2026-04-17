@@ -19,6 +19,7 @@ const CAVEMAN_MODE_ALIASES: Record<string, CavemanMode> = {
   lite: "lite",
   full: "full",
   ultra: "ultra",
+  // Keep only the common dropped-r typo from the old "ulta" command usage.
   ulta: "ultra",
   wenyan: "wenyan-full",
   "wenyan-lite": "wenyan-lite",
@@ -39,7 +40,7 @@ const CAVEMAN_MODE_RULES: Record<CavemanMode, string[]> = {
   ],
   ultra: [
     "Mode rules: abbreviate common technical nouns, strip conjunctions, use arrows for causality, and use one word when enough.",
-    "Example style: Inline obj prop -> new ref -> re-render. `useMemo`.",
+    "Example style: Inline obj prop → new ref → re-render. `useMemo`.",
   ],
   "wenyan-lite": [
     "Mode rules: use semi-classical Chinese register, drop filler and hedging, but keep readable grammar structure.",
@@ -51,7 +52,7 @@ const CAVEMAN_MODE_RULES: Record<CavemanMode, string[]> = {
   ],
   "wenyan-ultra": [
     "Mode rules: extreme compact 文言 style, maximum compression, arrows allowed when they clarify cause.",
-    "Example style: 新參照->重繪。`useMemo`。",
+    "Example style: 新參照→重繪。`useMemo`。",
   ],
 };
 

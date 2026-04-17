@@ -1197,6 +1197,7 @@ export default function App({
   // Tracks the transcript start index for the current user turn across
   // approval continuations (requires_approval -> approval result round-trip).
   const pendingTranscriptStartLineIndexRef = useRef<number | null>(null);
+  const pendingApprovalSuppressClientToolsRef = useRef(false);
 
   // Track the most recent run ID from streaming (for statusline display)
   const lastRunIdRef = useRef<string | null>(null);
@@ -4008,15 +4009,15 @@ export default function App({
       initialInput: Array<MessageCreate | ApprovalCreate>,
       options?: {
         allowReentry?: boolean;
-        clientTools?: "default" | "none";
+        suppressClientTools?: boolean;
         submissionGeneration?: number;
         transcriptStartLineIndex?: number | null;
       },
     ): Promise<void> => {
-      const clientToolsMode = options?.clientTools ?? "default";
+      const suppressClientTools = options?.suppressClientTools ?? false;
       const reentryOptions = {
         allowReentry: true,
-        clientTools: clientToolsMode,
+        suppressClientTools,
       } as const;
 
       // Transient pre-stream retries can yield for seconds.
@@ -4170,6 +4171,9 @@ export default function App({
         }));
       };
       const allowReentry = options?.allowReentry ?? false;
+      if (!allowReentry) {
+        pendingApprovalSuppressClientToolsRef.current = false;
+      }
       const hasApprovalInput = initialInput.some(
         (item) => item.type === "approval",
       );
@@ -4363,13 +4367,12 @@ export default function App({
             const preparedToolContext = await prepareScopedToolExecutionContext(
               tempModelOverrideRef.current ?? undefined,
             );
-            const preparedToolContextForRequest =
-              clientToolsMode === "none"
-                ? {
-                    ...preparedToolContext.preparedToolContext,
-                    clientTools: [],
-                  }
-                : preparedToolContext.preparedToolContext;
+            const preparedToolContextForRequest = suppressClientTools
+              ? {
+                  ...preparedToolContext.preparedToolContext,
+                  clientTools: [],
+                }
+              : preparedToolContext.preparedToolContext;
             const nextStream = await sendMessageStream(
               conversationIdRef.current,
               currentInput,
@@ -5244,6 +5247,7 @@ export default function App({
           if (stopReasonToHandle === "requires_approval") {
             clearApprovalToolContext();
             preserveTranscriptStartForApproval = true;
+            pendingApprovalSuppressClientToolsRef.current = suppressClientTools;
             approvalToolContextIdRef.current = turnToolContextId;
             // Clear stale state immediately to prevent ID mismatch bugs
             setAutoHandledResults([]);
@@ -6347,6 +6351,7 @@ export default function App({
       } finally {
         if (!preserveTranscriptStartForApproval) {
           pendingTranscriptStartLineIndexRef.current = null;
+          pendingApprovalSuppressClientToolsRef.current = false;
         }
 
         // Check if this conversation was superseded by an ESC interrupt
@@ -10548,7 +10553,7 @@ export default function App({
                   otid: randomUUID(),
                 },
               ],
-              { clientTools: "none" },
+              { suppressClientTools: true },
             );
           } catch (error) {
             const errorDetails = formatErrorDetails(error, agentId);
@@ -12284,7 +12289,10 @@ ${SYSTEM_REMINDER_CLOSE}
             buffersRef.current,
           );
           toolResultsInFlightRef.current = true;
-          await processConversation(input, { allowReentry: true });
+          await processConversation(input, {
+            allowReentry: true,
+            suppressClientTools: pendingApprovalSuppressClientToolsRef.current,
+          });
           toolResultsInFlightRef.current = false;
 
           // Clear any stale queued results from previous interrupts.
@@ -12565,13 +12573,20 @@ ${SYSTEM_REMINDER_CLOSE}
             refreshDerived();
 
             // Continue conversation with all results
-            await processConversation([
+            await processConversation(
+              [
+                {
+                  type: "approval",
+                  approvals: allResults as ApprovalResult[],
+                  otid: randomUUID(),
+                },
+              ],
               {
-                type: "approval",
-                approvals: allResults as ApprovalResult[],
-                otid: randomUUID(),
+                allowReentry: true,
+                suppressClientTools:
+                  pendingApprovalSuppressClientToolsRef.current,
               },
-            ]);
+            );
           } finally {
             setIsExecutingTool(false);
           }
@@ -12677,6 +12692,7 @@ ${SYSTEM_REMINDER_CLOSE}
     setApprovalResults([]);
     setAutoHandledResults([]);
     setAutoDeniedApprovals([]);
+    pendingApprovalSuppressClientToolsRef.current = false;
   }, [pendingApprovals, refreshDerived, queueApprovalResults]);
 
   const handleModelSelect = useCallback(

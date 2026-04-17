@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   buildCavemanCommandPrompt,
   isCavemanCommandInput,
@@ -8,10 +10,13 @@ import { commands, executeCommand } from "../../cli/commands/registry";
 
 describe("/caveman command", () => {
   test("matches slash-first caveman commands with trailing whitespace separators", () => {
+    const tab = "\t";
+    const newline = "\n";
+
     expect(isCavemanCommandInput("/caveman")).toBe(true);
     expect(isCavemanCommandInput("/caveman ultra")).toBe(true);
-    expect(isCavemanCommandInput("/caveman\tultra")).toBe(true);
-    expect(isCavemanCommandInput("\t/caveman\nultra")).toBe(false);
+    expect(isCavemanCommandInput(`/caveman${tab}ultra`)).toBe(true);
+    expect(isCavemanCommandInput(`${tab}/caveman${newline}ultra`)).toBe(false);
     expect(isCavemanCommandInput("/cavemanultra")).toBe(false);
     expect(isCavemanCommandInput("/caveman-mode ultra")).toBe(false);
   });
@@ -35,7 +40,7 @@ describe("/caveman command", () => {
 
     expect(prompt).toContain("Switch to cave-code ultra mode.");
     expect(prompt).toContain("abbreviate common technical nouns");
-    expect(prompt).toContain("Inline obj prop -> new ref -> re-render");
+    expect(prompt).toContain("Inline obj prop → new ref → re-render");
     expect(prompt).toContain("Apply this mode for this conversation only");
     expect(prompt).toContain("Do not call memory tools");
     expect(prompt).toContain("every reasoning_message must be non-empty");
@@ -73,5 +78,21 @@ describe("/caveman command", () => {
       output:
         "Usage: /caveman [lite|full|ultra|wenyan-lite|wenyan-full|wenyan-ultra]",
     });
+  });
+
+  test("/caveman suppresses client tools through approval continuations", () => {
+    const appPath = fileURLToPath(
+      new URL("../../cli/App.tsx", import.meta.url),
+    );
+    const appSource = readFileSync(appPath, "utf-8");
+
+    expect(appSource).toContain("{ suppressClientTools: true }");
+    expect(appSource).toContain("clientTools: []");
+    expect(appSource).toContain(
+      "pendingApprovalSuppressClientToolsRef.current =",
+    );
+    expect(appSource).toContain(
+      "suppressClientTools: pendingApprovalSuppressClientToolsRef.current",
+    );
   });
 });
