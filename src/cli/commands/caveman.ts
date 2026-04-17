@@ -29,7 +29,7 @@ const CAVEMAN_MODE_ALIASES: Record<string, CavemanMode> = {
 };
 
 // Keep these mode rules aligned with persona_caveman.mdx and builtin/caveman/SKILL.md.
-const CAVEMAN_MODE_RULES: Record<CavemanMode, string[]> = {
+export const CAVEMAN_MODE_RULES: Record<CavemanMode, string[]> = {
   lite: [
     "Mode rules: remove filler, pleasantries, and hedging, but keep articles and complete professional sentences.",
     "Example style: Component re-renders because object reference changes each render. Wrap it in `useMemo`.",

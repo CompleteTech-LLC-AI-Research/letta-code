@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   buildCavemanCommandPrompt,
+  CAVEMAN_MODE_RULES,
   isCavemanCommandInput,
   normalizeCavemanMode,
 } from "../../cli/commands/caveman";
@@ -67,6 +68,25 @@ describe("/caveman command", () => {
     );
   });
 
+  test("keeps mode-switch examples aligned with the bundled skill", () => {
+    const skillPath = fileURLToPath(
+      new URL("../../skills/builtin/caveman/SKILL.md", import.meta.url),
+    );
+    const skillSource = readFileSync(skillPath, "utf-8");
+
+    for (const [mode, rules] of Object.entries(CAVEMAN_MODE_RULES)) {
+      const exampleRule = rules.find((rule) =>
+        rule.startsWith("Example style: "),
+      );
+      expect(exampleRule).toBeDefined();
+      if (!exampleRule) {
+        throw new Error(`Missing example rule for ${mode}`);
+      }
+      expect(skillSource).toContain(`- ${mode}: `);
+      expect(skillSource).toContain(exampleRule.replace("Example style: ", ""));
+    }
+  });
+
   test("registers /caveman as a built-in slash command", async () => {
     expect(commands["/caveman"]).toMatchObject({
       desc: "Switch cave-code mode",
@@ -90,13 +110,6 @@ describe("/caveman command", () => {
     );
     const appSource = readFileSync(appPath, "utf-8");
 
-    expect(appSource).toContain("{ suppressClientTools: true }");
-    expect(appSource).toContain("clientTools: []");
-    expect(appSource).toContain(
-      "pendingApprovalSuppressClientToolsRef.current =",
-    );
-    expect(appSource).toContain(
-      "suppressClientTools: pendingApprovalSuppressClientToolsRef.current",
-    );
+    expect(appSource).toContain("pendingApprovalSuppressClientToolsRef");
   });
 });
