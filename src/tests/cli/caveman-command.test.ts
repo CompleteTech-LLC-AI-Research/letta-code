@@ -11,6 +11,10 @@ import {
 import { commands, executeCommand } from "../../cli/commands/registry";
 import type { PreparedToolExecutionContext } from "../../tools/manager";
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 describe("/caveman command", () => {
   test("matches slash-first caveman commands with trailing whitespace separators", () => {
     const tab = "\t";
@@ -46,10 +50,7 @@ describe("/caveman command", () => {
     expect(prompt).toContain("Inline obj prop → new ref → re-render");
     expect(prompt).toContain("Apply this mode for this conversation only");
     expect(prompt).toContain("Do not call any tools");
-    expect(prompt).toContain("`memory`");
-    expect(prompt).toContain("`core_memory_append`");
-    expect(prompt).toContain("`archival_memory_insert`");
-    expect(prompt).toContain("`web_search`");
+    expect(prompt).not.toContain("server-side tools such as");
     expect(prompt).toContain("every reasoning_message must be non-empty");
     expect(prompt).toContain("never analyst prose");
   });
@@ -84,8 +85,11 @@ describe("/caveman command", () => {
       if (!exampleRule) {
         throw new Error(`Missing example rule for ${mode}`);
       }
-      expect(skillSource).toContain(`- ${mode}: `);
-      expect(skillSource).toContain(exampleRule.replace("Example style: ", ""));
+      const example = exampleRule.replace("Example style: ", "");
+      const pattern = new RegExp(
+        `-\\s+${escapeRegex(mode)}:\\s+"?${escapeRegex(example)}`,
+      );
+      expect(skillSource).toMatch(pattern);
     }
   });
 
@@ -95,7 +99,7 @@ describe("/caveman command", () => {
     });
 
     await expect(executeCommand("/caveman ultra")).resolves.toEqual({
-      success: true,
+      success: false,
       output:
         "/caveman ultra must be used inside the interactive CLI; mode was not applied.",
     });

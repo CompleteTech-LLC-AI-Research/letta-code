@@ -72,7 +72,6 @@ export function buildCavemanCommandPrompt(mode: CavemanMode): string {
     `Switch to cave-code ${mode} mode.`,
     ...CAVEMAN_MODE_RULES[mode],
     "Apply this mode for this conversation only. Do not call any tools for this mode switch.",
-    "Specifically avoid server-side tools such as `memory`, `core_memory_append`, `core_memory_replace`, `archival_memory_insert`, `archival_memory_search`, `web_search`, and `fetch_webpage`.",
     "Reasoning fire stays on: every reasoning_message must be non-empty cave-grunt, never analyst prose.",
     'No analyst layer: no "The user is asking", no "Let me think", no "I should", no prompt/tool bookkeeping.',
     "Hidden reasoning, plans, and visible replies all follow the selected cave-code mode.",
@@ -84,6 +83,8 @@ export function buildCavemanCommandPrompt(mode: CavemanMode): string {
 export function suppressPreparedClientTools(
   preparedToolContext: PreparedToolExecutionContext,
 ): PreparedToolExecutionContext {
+  // Scrub only the advertised tool surface; preserve the context snapshot so
+  // pending approval continuations can still execute already-requested tools.
   return {
     ...preparedToolContext,
     clientTools: [],
